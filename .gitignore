@@ -9,3 +9,6 @@ production/
 *.iws
 logs
 /bin/
+snakes.iml
+snakes.ipr
+snakes.iws
