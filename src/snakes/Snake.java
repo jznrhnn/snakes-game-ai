@@ -22,7 +22,7 @@ public class Snake implements Cloneable {
      * @param elements Coordinates that define body elements of the snake
      * @param body     Coordinates that define body elements of the snake
      */
-    private Snake(Coordinate mazeSize, HashSet<Coordinate> elements, Deque<Coordinate> body) {
+    public Snake(Coordinate mazeSize, HashSet<Coordinate> elements, Deque<Coordinate> body) {
         this.mazeSize = mazeSize;
         this.elements = elements;
         this.body = body;

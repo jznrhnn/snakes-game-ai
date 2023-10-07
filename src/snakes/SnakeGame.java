@@ -56,6 +56,22 @@ public class SnakeGame {
 		this.bot1_runner = new SnakesRunner(bot1, snake1, snake0, mazeSize, appleCoordinate);
 	}
 
+	public SnakeGame(Coordinate mazeSize, Snake snake,Snake oppnent, Bot bot0, Bot bot1) {
+		this.startTime = System.currentTimeMillis();
+		this.mazeSize = mazeSize;
+		this.snake0 = snake;
+		this.snake1 = oppnent;
+		this.bot0 = bot0;
+		this.bot1 = bot1;
+		this.name0 = bot0.getClass().getSimpleName();
+		this.name1 = bot1.getClass().getSimpleName();
+
+		appleCoordinate = randomNonOccupiedCell();
+
+		this.bot0_runner = new SnakesRunner(bot0, snake0, snake1, mazeSize, appleCoordinate);
+		this.bot1_runner = new SnakesRunner(bot1, snake1, snake0, mazeSize, appleCoordinate);
+	}
+
 	/**
 	 * Converts game to string representation
 	 *
