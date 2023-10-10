@@ -1,5 +1,6 @@
 package student;
 
+import org.junit.jupiter.api.Test;
 import snakes.Bot;
 import snakes.Coordinate;
 import snakes.Direction;
@@ -19,6 +20,11 @@ public class BasicBot implements Bot {
 
     private static final Direction[] DIRECTIONS = new Direction[] { Direction.UP, Direction.DOWN, Direction.LEFT,
             Direction.RIGHT };
+
+    // for
+    private static boolean isFull = true;
+
+    private long startTime;
 
     /**
      * Outputs text to stdout and file
@@ -103,8 +109,11 @@ public class BasicBot implements Bot {
                 return false;
             if (h != node.h)
                 return false;
+            if (isFull) {
+                return parent != null ? parent.equals(node.parent) : node.parent == null;
+            }
             return true;
-            // return parent != null ? parent.equals(node.parent) : node.parent == null;
+
         }
 
         @Override
@@ -113,48 +122,12 @@ public class BasicBot implements Bot {
             result = 31 * result + y;
             result = 31 * result + g;
             result = 31 * result + h;
-            // result = 31 * result + (parent != null ? parent.hashCode() : 0);
+            if (isFull) {
+                result = 31 * result + (parent != null ? parent.hashCode() : 0);
+            }
             return result;
         }
 
-        /**
-         * for full path (include detour)
-         * 
-         * @param o
-         * @return
-         */
-        public boolean fullEquals(Object o) {
-            if (this == o)
-                return true;
-            if (o == null || getClass() != o.getClass())
-                return false;
-
-            Node node = (Node) o;
-
-            if (x != node.x)
-                return false;
-            if (y != node.y)
-                return false;
-            if (g != node.g)
-                return false;
-            if (h != node.h)
-                return false;
-            return parent != null ? parent.equals(node.parent) : node.parent == null;
-        }
-
-        public int fullHashCode() {
-            int result = x;
-            result = 31 * result + y;
-            result = 31 * result + g;
-            result = 31 * result + h;
-            result = 31 * result + (parent != null ? parent.hashCode() : 0);
-            return result;
-        }
-
-        @Override
-        protected Object clone() throws CloneNotSupportedException {
-            return super.clone();
-        }
     }
 
     public static int heuristic(Coordinate snake, Coordinate apple) {
@@ -191,12 +164,16 @@ public class BasicBot implements Bot {
             output("Opponent body" + opponent.body);
             output("Apple: " + apple);
 
-            long startTime = System.currentTimeMillis();
+            startTime = System.currentTimeMillis();
+
+            List<int[]> safePath = getPath(snake, opponent, mazeSize, snake.body.getLast());
+            isFull = false;
             List<int[]> path = getPath(snake, opponent, mazeSize, apple);
             if (path.isEmpty()) {
-                output("Can't find path to apple,Go to the tail keep safe");
-                path = getPath(snake, opponent, mazeSize, snake.body.getLast());
-                if (path.isEmpty()) {
+                output("Can't find fast path to apple,try full path find");
+                isFull = true;
+                path = getPath(snake, opponent, mazeSize, apple);
+                if (safePath.isEmpty()) {
                     output("Can't find path to tail");
                     Direction[] notLosingDirections = getNotLosingDirections(snake, opponent, mazeSize);
                     Direction[] noCollDirections = voidCollision(snake, opponent, mazeSize,
@@ -208,7 +185,7 @@ public class BasicBot implements Bot {
                         result = snake.getHead().getDirection(snake.body.getLast());
                     }
                 } else {
-                    result = snake.getHead().getDirection(new Coordinate(path.get(1)[0], path.get(1)[1]));
+                    result = snake.getHead().getDirection(new Coordinate(safePath.get(1)[0], safePath.get(1)[1]));
                 }
             } else {
                 result = snake.getHead().getDirection(new Coordinate(path.get(1)[0], path.get(1)[1]));
@@ -220,7 +197,6 @@ public class BasicBot implements Bot {
             e.printStackTrace();
             output("Error");
             throw e;
-            // return Direction.UP;
         }
 
     }
@@ -235,17 +211,15 @@ public class BasicBot implements Bot {
      * @return
      */
     public List<int[]> getPath(Snake snake, Snake opponent, Coordinate mazeSize, Coordinate apple) {
-        // start time of decision
-        final long startTime = System.currentTimeMillis();
-
         // A* algorithm
         PriorityQueue<Node> openSet = new PriorityQueue<>(Comparator.comparingInt(Node::f));
-        Map<Node, Integer> gValues = new HashMap<>();
+        HashMap<Node, Integer> gValues = new HashMap<>();
 
         Node start = new Node(snake.getHead().x, snake.getHead().y, 0,
                 Math.abs(snake.getHead().x - apple.x) + Math.abs(snake.getHead().y - apple.y), null);
         openSet.add(start);
         gValues.put(start, 0);
+
         // for path log
         List<int[]> path = new ArrayList<>();
         while (!openSet.isEmpty()) {
@@ -336,11 +310,7 @@ public class BasicBot implements Bot {
                     openSet.add(neighborNode);
                     gValues.put(neighborNode, newG);
                 }
-                // if (!gValues.containsKey(neighborNode.fullHashCode()) || newG <
-                // gValues.get(neighborNode.fullHashCode())) {
-                // openSet.add(neighborNode);
-                // gValues.put(neighborNode.fullHashCode(), newG);
-                // }
+
             }
         }
         // log time
