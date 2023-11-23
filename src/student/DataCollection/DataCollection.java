@@ -1,5 +1,6 @@
 package student.DataCollection;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -17,7 +18,7 @@ import snakes.Snake;
 
 public class DataCollection implements Bot {
     private static final String LOG_PATH = "DataCollection.log";
-    private static final String DATA_PATH = "DataCollection.csv";
+    private static final String DATA_PATH = "data//DataCollection.csv";
 
     // record apple generate time and location
     private long appleTime = System.currentTimeMillis();
@@ -150,9 +151,20 @@ public class DataCollection implements Bot {
         appleState[apple.y * mazeSize.x + apple.x] = 1;
         Collections.addAll(state, appleState);
         // add disappearTime to state
-        state.add((int) existTime / 1000);
+        Integer[] appleTimes = new Integer[mazeSize.x * mazeSize.y];
+        Arrays.fill(appleTimes, 0);
+        int appleTime=Math.round(existTime/1000);
+        for(int i=0;i<appleTime;i++){
+            appleTimes[i] = 1;
+        }
+        Collections.addAll(state, appleTimes);
         // add game time to state
-        state.add((int) (System.currentTimeMillis() - gameTime) / 1000);
+        Integer[] gameTimes = new Integer[mazeSize.x * mazeSize.y];
+        Arrays.fill(gameTimes, 0);
+        int gameT = Math.round((System.currentTimeMillis() - gameTime) / 1000);
+        for(int i=0;i<gameT;i++){
+            gameTimes[i] = 1;
+        }
         // add body state,include head info
         Integer[] snakeBodyState = new Integer[mazeSize.x * mazeSize.y];
         Arrays.fill(snakeBodyState, 0);
@@ -171,6 +183,30 @@ public class DataCollection implements Bot {
         Collections.addAll(state, opponentBodyState);
 
         return state;
+    }
+
+    List<List<Integer>> loadDataList(String pathString){
+        List<List<Integer>> states = new ArrayList<>();
+        // load data from csv
+        BufferedReader reader = null;
+        try {
+            reader = new BufferedReader(new java.io.FileReader(pathString));
+            String line = null;
+            while ((line = reader.readLine()) != null) {
+                List<Integer> temp=new ArrayList<>();
+                String[] item = line.split(",");
+                for (int i = 0; i < item.length; i++) {
+                    temp.add(Integer.parseInt(item[i]));
+                }
+                states.add(temp);
+            }
+            reader.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+            output("loadDataList error:" + e.getMessage());
+        }
+
+        return states;
     }
 
     public static void saveDataToCSV(List<Integer> state, String fileName) {
