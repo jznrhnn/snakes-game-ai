@@ -165,6 +165,7 @@ public class DataCollection implements Bot {
         for(int i=0;i<gameT;i++){
             gameTimes[i] = 1;
         }
+        Collections.addAll(state, gameTimes);
         // add body state,include head info
         Integer[] snakeBodyState = new Integer[mazeSize.x * mazeSize.y];
         Arrays.fill(snakeBodyState, 0);
