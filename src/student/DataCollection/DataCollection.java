@@ -4,17 +4,25 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
+
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 
 import negasnake.NegaSnake;
 import snakes.Bot;
 import snakes.Coordinate;
 import snakes.Direction;
 import snakes.Snake;
+import snakes.SnakesUIMain;
 
 public class DataCollection implements Bot {
     private static final String LOG_PATH = "DataCollection.log";
@@ -27,15 +35,35 @@ public class DataCollection implements Bot {
     private long gameTime = System.currentTimeMillis();
 
     // info
-    public Snake lastSnake;
-    public Snake lastOpponent;
     public Coordinate lastApple = null;
-    public Boolean forecast;
-    public long lastGameTime;
 
     // last state
     List<Integer> lastState = new ArrayList<>();
-    Direction lastDirection;
+
+    NegaSnake negaSnake = new NegaSnake();
+
+    // data cache
+    public static LoadingCache<String, List<List<Integer>>> dataCache = CacheBuilder.newBuilder()
+            .maximumSize(1000)
+            .build(new CacheLoader<String, List<List<Integer>>>() {
+                @Override
+                public List<List<Integer>> load(String path) throws Exception {
+                    return loadDataList(path);
+                }
+            });
+
+    public DataCollection() {
+        // init data cache
+        try {
+            dataCache.get(DATA_PATH);
+        } catch (ExecutionException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        appleTime = System.currentTimeMillis();
+        gameTime = System.currentTimeMillis();
+
+    }
 
     public static int directionToNumber(Direction direction) {
         switch (direction) {
@@ -82,41 +110,30 @@ public class DataCollection implements Bot {
     public Direction chooseDirection(Snake snake, Snake opponent, Coordinate mazeSize, Coordinate apple) {
         long startTime = System.currentTimeMillis();
         Direction resDirection = null;
-        // log current snake and apple position, opponent snake position
-        output("------------------" + new Date() + "------------------");
-        output("Snake: " + snake.getHead());
-        output("snake body" + snake.body);
-        output("Opponent: " + opponent.getHead());
-        output("Opponent body" + opponent.body);
-        output("Apple: " + apple);
-        output("Game time: " + (System.currentTimeMillis() - gameTime));
-
         // get apple disappear time
         if (lastApple != null && !lastApple.equals(apple)) {
             appleTime = System.currentTimeMillis();
         }
         long existTime = System.currentTimeMillis() - appleTime;
-        output("apple exist time: " + existTime);
 
         List<Integer> state = generateOneHotState(snake, opponent, mazeSize, apple, existTime);
-
         // get dirction from negaSnake
         try {
-            NegaSnake negaSnake = new NegaSnake();
             resDirection = negaSnake.chooseDirection(snake, opponent, mazeSize, apple);
         } catch (Exception e) {
             e.printStackTrace();
             output("NegaSnake error:" + e.getMessage());
         }
-
         // save state and reward on the file
         List<Integer> datas = new ArrayList<>();
         datas.addAll(state);
         datas.add(directionToNumber(resDirection));
-        saveDataToCSV(datas, DATA_PATH);
+        Thread thread = new Thread(() -> {
+            saveDataToCSV(datas, DATA_PATH);
+        });
+        thread.start();
+        System.out.println("DataCollection time:" + (System.currentTimeMillis() - startTime) + "ms");
         lastApple = apple;
-        output(resDirection.toString());
-        output("Time cost: " + (System.currentTimeMillis() - startTime) + "ms");
         return resDirection;
     }
 
@@ -153,8 +170,8 @@ public class DataCollection implements Bot {
         // add disappearTime to state
         Integer[] appleTimes = new Integer[mazeSize.x * mazeSize.y];
         Arrays.fill(appleTimes, 0);
-        int appleTime=Math.round(existTime/1000);
-        for(int i=0;i<appleTime;i++){
+        int appleTime = Math.round(existTime / 1000);
+        for (int i = 0; i < appleTime; i++) {
             appleTimes[i] = 1;
         }
         Collections.addAll(state, appleTimes);
@@ -162,7 +179,7 @@ public class DataCollection implements Bot {
         Integer[] gameTimes = new Integer[mazeSize.x * mazeSize.y];
         Arrays.fill(gameTimes, 0);
         int gameT = Math.round((System.currentTimeMillis() - gameTime) / 1000);
-        for(int i=0;i<gameT;i++){
+        for (int i = 0; i < gameT; i++) {
             gameTimes[i] = 1;
         }
         Collections.addAll(state, gameTimes);
@@ -186,22 +203,27 @@ public class DataCollection implements Bot {
         return state;
     }
 
-    List<List<Integer>> loadDataList(String pathString){
+    static List<List<Integer>> loadDataList(String pathString) {
         List<List<Integer>> states = new ArrayList<>();
+        // check file exist
+        if (!java.nio.file.Files.exists(java.nio.file.Paths.get(pathString))) {
+            return states;
+        }
         // load data from csv
-        BufferedReader reader = null;
-        try {
-            reader = new BufferedReader(new java.io.FileReader(pathString));
-            String line = null;
+        try (BufferedReader reader = new BufferedReader(new java.io.FileReader(pathString))) {
+            String line;
             while ((line = reader.readLine()) != null) {
-                List<Integer> temp=new ArrayList<>();
-                String[] item = line.split(",");
-                for (int i = 0; i < item.length; i++) {
-                    temp.add(Integer.parseInt(item[i]));
+                List<Integer> temp = new ArrayList<>();
+                String[] items = line.split(",");
+                for (String item : items) {
+                    try {
+                        temp.add(Integer.parseInt(item.trim()));
+                    } catch (NumberFormatException e) {
+                        throw new RuntimeException("loadDataList error:" + e.getMessage());
+                    }
                 }
                 states.add(temp);
             }
-            reader.close();
         } catch (Exception e) {
             e.printStackTrace();
             output("loadDataList error:" + e.getMessage());
@@ -210,17 +232,24 @@ public class DataCollection implements Bot {
         return states;
     }
 
-    public static void saveDataToCSV(List<Integer> state, String fileName) {
+    public static synchronized void saveDataToCSV(List<Integer> state, String fileName) {
         try {
-            BufferedWriter writer = new BufferedWriter(new FileWriter(fileName, true));
-
-            writer.write(state.toString().substring(1, state.toString().length() - 1));
-            writer.newLine();
-
-            writer.close();
+            // Load data from cache
+            if (dataCache.get(fileName).contains(state)) {
+                return;
+            }
+            dataCache.get(fileName).add(state);
+            // Use try-with-resources for better resource management
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(fileName, true))) {
+                String csvLine = state.stream()
+                        .map(String::valueOf)
+                        .collect(Collectors.joining(","));
+                writer.write(csvLine);
+                writer.newLine();
+            }
         } catch (Exception e) {
             e.printStackTrace();
-            output("saveDataToCSV error:" + e.getMessage());
+            output("saveDataToCSV error with file '" + fileName + "': " + e.getMessage());
         }
     }
 
@@ -243,6 +272,43 @@ public class DataCollection implements Bot {
                 fw.close();
             } catch (IOException e) {
                 e.printStackTrace();
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        String[] botNames = { "student.BasicBot", "student.DataCollection.DataCollection" };
+
+        int threadNum = 8;
+
+        while (true) {
+            int threadsToWaitFor = (int) Math.ceil(threadNum * 0.8);
+            CountDownLatch latch = new CountDownLatch(threadsToWaitFor);
+            for (int i = 0; i < threadNum; i++) {
+                Thread thread = new Thread(() -> {
+                    try {
+                        SnakesUIMain.main(botNames);
+                    } catch (NoSuchMethodException | InstantiationException | IllegalAccessException
+                            | InvocationTargetException
+                            | InterruptedException | IOException e) {
+                        e.printStackTrace();
+                    } finally {
+                        latch.countDown();
+                    }
+                });
+                thread.start();
+            }
+
+            // wait almost thread finish
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println("Finish one round,collection data size:" + dataCache.getIfPresent(DATA_PATH).size());
+            // exit if data size > 500000
+            if (dataCache.getIfPresent(DATA_PATH).size() > 500000) {
+                break;
             }
         }
     }
